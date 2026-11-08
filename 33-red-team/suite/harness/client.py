@@ -9,14 +9,14 @@ import urllib.request
 
 TIMEOUT = 30
 
-# Error codes the platform returns in error.data.code (same as replay/).
+# Error codes the platform returns (same as replay/).
 DENIED = {"permission_denied"}          # JSON-RPC -32001
 NOT_EXPOSED = {"tool_not_available"}    # JSON-RPC -32602, not in this login's tools/list
 NOT_FOUND = {"not_found"}               # JSON-RPC -32004
 
 
 class InfraError(Exception):
-    """The check could not be made (missing setting, network error, bad token).
+    """The check could not be made (missing setting, network error, bad token, wrong URL).
     The runner reports it as an infrastructure failure, never as a pass."""
 
 
@@ -55,19 +55,26 @@ def rpc(env, method, params=None, tok=None):
 
 def tool(env, name, args=None):
     """tools/call with the seat token. Returns (http_status, data, is_error).
-    On a JSON-RPC error, data is the error object and is_error is True."""
+    On a JSON-RPC error, data is the error object. On a tool result, data is the
+    parsed text content (or the raw result if it has no text), and is_error is
+    the result's isError flag."""
     st, resp = rpc(env, "tools/call", {"name": name, "arguments": args or {}}, tok=token(env))
     data, err = resp, False
     if isinstance(resp, dict):
         if "result" in resp:
             res = resp["result"]
             if isinstance(res, dict) and "content" in res:
-                txt = "\n".join(c.get("text", "") for c in res.get("content", [])
-                                if c.get("type") == "text")
-                try:
-                    data = json.loads(txt)
-                except ValueError:
-                    data = txt
+                items = res.get("content")
+                items = items if isinstance(items, list) else []
+                txt = "\n".join(str(c.get("text") or "") for c in items
+                                if isinstance(c, dict) and c.get("type") == "text")
+                if txt:
+                    try:
+                        data = json.loads(txt)
+                    except ValueError:
+                        data = txt
+                else:
+                    data = res
                 err = bool(res.get("isError", False))
             else:
                 data = res
@@ -77,10 +84,14 @@ def tool(env, name, args=None):
 
 
 def error_code(data):
-    """The platform's error code, e.g. 'permission_denied', or None."""
-    if isinstance(data, dict) and isinstance(data.get("data"), dict):
-        code = data["data"].get("code")
-        return code if isinstance(code, str) else None
+    """The platform's error code as a string, e.g. 'permission_denied', or None.
+    Checks the JSON-RPC error shape (error.data.code) and a tool result marked
+    isError ({"code": ...} or {"error": {"code": ...}})."""
+    if not isinstance(data, dict):
+        return None
+    for holder in (data.get("data"), data, data.get("error")):
+        if isinstance(holder, dict) and isinstance(holder.get("code"), str):
+            return holder["code"]
     return None
 
 
@@ -91,19 +102,54 @@ def refused(st, data, is_error):
     return st == 403 or code in DENIED or code in NOT_EXPOSED
 
 
+def control(env):
+    """The real token must reach the MCP endpoint: HTTP 200 with a tools/list result.
+    If not, no auth check means anything, so it is reported as infrastructure."""
+    st, body = rpc(env, "tools/list", tok=token(env))
+    if st != 200 or not (isinstance(body, dict) and "result" in body):
+        raise InfraError(f"control call with the real token returned HTTP {st} without a "
+                         "tools/list result; token expired or wrong URL?")
+
+
+def auth_check(st, body, what):
+    """Verdict for tasks 1-2, after control() passed. 401 passes. An accepted call
+    (200 with a result) fails. Anything else did not test the boundary: infrastructure."""
+    base = f"verifier=http_status; real token -> HTTP 200 (control); {what} -> HTTP {st}"
+    if st == 401:
+        return {"passed": True, "score": 1.0, "evidence": base + "; expected 401"}
+    if st == 200 and isinstance(body, dict) and "result" in body:
+        return {"passed": False, "score": 0.0, "evidence": base + ", call accepted; expected 401"}
+    raise InfraError(f"{what} -> HTTP {st}: neither refused with 401 nor accepted")
+
+
 def _parse(raw):
-    if raw.startswith("data:") or "\ndata:" in raw:
-        out = []
-        for line in raw.splitlines():
-            if line.startswith("data:"):
-                chunk = line[5:].strip()
-                if chunk and chunk != "[DONE]":
-                    try:
-                        out.append(json.loads(chunk))
-                    except ValueError:
-                        out.append(chunk)
-        return out[-1] if len(out) == 1 else (out or raw)
-    try:
-        return json.loads(raw)
-    except ValueError:
-        return raw
+    """A JSON body, or an SSE stream. In SSE, consecutive data: lines form one event,
+    joined by newlines and ended by a blank line. Returns the last JSON-RPC message
+    (a dict with "result" or "error"), else the last event, else the raw text."""
+    lines = raw.splitlines()
+    if not any(line.startswith("data:") for line in lines):
+        try:
+            return json.loads(raw)
+        except ValueError:
+            return raw
+    events, buf = [], []
+    for line in lines + [""]:
+        if line == "":
+            if buf:
+                events.append("\n".join(buf))
+                buf = []
+        elif line.startswith("data:"):
+            value = line[5:]
+            buf.append(value[1:] if value.startswith(" ") else value)
+    parsed = []
+    for e in events:
+        if e.strip() == "[DONE]":
+            continue
+        try:
+            parsed.append(json.loads(e))
+        except ValueError:
+            parsed.append(e)
+    for msg in reversed(parsed):
+        if isinstance(msg, dict) and ("result" in msg or "error" in msg):
+            return msg
+    return parsed[-1] if parsed else raw

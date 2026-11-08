@@ -3,6 +3,7 @@ in PLAN.md (for example t11_scope_contract_blocked.py), then fill in run().
 Files starting with "_" are not run.
 
 Rules (34-eval-harness/TASK_FORMAT.md section 3, PLAN.md, CONTRIBUTING.md):
+- Return {"passed": bool, "score": 0-1 (optional, follows passed if left out), "evidence": str}.
 - Decide `passed` from the HTTP / JSON-RPC result or the data, never from what an agent says.
 - Build inputs at run time from AGENTSWITCH_TOKEN and the copy. There is no internet and
   no other files, except bug-status.json (use harness.bugs.status).

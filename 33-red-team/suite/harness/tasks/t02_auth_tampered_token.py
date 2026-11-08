@@ -16,16 +16,10 @@ def tamper(tok):
 
 
 def run(env):
-    tok = client.token(env)
-    st, _ = client.rpc(env, "tools/list", tok=tok)
-    if st != 200:
-        raise client.InfraError(f"control call with the real token returned HTTP {st}; "
-                                "token missing or expired?")
-    st, _ = client.rpc(env, "tools/list", tok=tamper(tok))
-    passed = st == 401
-    return {"passed": passed, "score": 1.0 if passed else 0.0,
-            "evidence": f"verifier=http_status; real token -> HTTP 200 (control); "
-                        f"changed token -> HTTP {st}; expected 401"}
+    changed = tamper(client.token(env))
+    client.control(env)
+    st, body = client.rpc(env, "tools/list", tok=changed)
+    return client.auth_check(st, body, "changed token")
 
 
 TASK = {"id": "rt_auth_tampered_token", "title": "MCP call with a changed token is refused (401)",

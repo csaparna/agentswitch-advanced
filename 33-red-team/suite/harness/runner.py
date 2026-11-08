@@ -15,17 +15,50 @@ ENV_KEYS = ("AGENTSWITCH_BASE_URL", "AGENTSWITCH_TOKEN",
             "AGENTSWITCH_INSTANCE", "AGENTSWITCH_RUN_ID")
 
 
-def discover():
-    """Every harness/tasks/tNN_*.py module with a TASK, in file-name order."""
-    from harness import tasks as pkg
+def _load_failed(name, reason):
+    """A task file that cannot be used still shows up, as an infrastructure failure."""
+    def run(env):
+        raise InfraError(f"task file {name}.py {reason}")
+    return {"id": name, "title": f"{name} (could not be loaded)", "run": run}
+
+
+def discover(pkg=None):
+    """Every tNN_*.py module in harness/tasks, in file-name order. A module that fails
+    to import, or has no valid TASK, is kept as a failing task, never dropped."""
+    if pkg is None:
+        from harness import tasks as pkg
     found = []
     for m in sorted(pkgutil.iter_modules(pkg.__path__), key=lambda m: m.name):
         if m.name.startswith("_"):
             continue
-        task = getattr(importlib.import_module(f"harness.tasks.{m.name}"), "TASK", None)
-        if task:
-            found.append(task)
+        try:
+            task = getattr(importlib.import_module(f"{pkg.__name__}.{m.name}"), "TASK", None)
+        except Exception as e:
+            found.append(_load_failed(m.name, f"could not be loaded ({type(e).__name__})"))
+            continue
+        if not (isinstance(task, dict) and task.get("id") and task.get("title")
+                and callable(task.get("run"))):
+            found.append(_load_failed(m.name, "has no valid TASK (id, title, run)"))
+            continue
+        found.append(task)
     return found
+
+
+def _check(r):
+    """Validate what a task returned. Raises InfraError if it is malformed."""
+    if not isinstance(r, dict):
+        raise InfraError(f"task returned {type(r).__name__}, expected a dict")
+    passed = r.get("passed")
+    if not isinstance(passed, bool):
+        raise InfraError("task returned no true/false 'passed'")
+    score = r.get("score")
+    if score is None:
+        score = 1.0 if passed else 0.0
+    elif isinstance(score, bool) or not isinstance(score, (int, float)) or not 0.0 <= score <= 1.0:
+        raise InfraError("task returned a score that is not a number from 0 to 1")
+    if (passed and score == 0.0) or (not passed and score == 1.0):
+        raise InfraError(f"task returned passed={passed} with score={float(score)}")
+    return {"passed": passed, "score": float(score), "evidence": str(r.get("evidence", ""))}
 
 
 def _fail(task_id, title, reason):
@@ -34,22 +67,19 @@ def _fail(task_id, title, reason):
 
 
 def run_one(task, env):
+    """One task's result, or None when a write task is skipped on a local run."""
     instance = env.get("AGENTSWITCH_INSTANCE") or "unknown"
     task_id, title = f"{instance}:{task['id']}", task["title"]
     # A write task runs only inside a harness run, which is always on a copy
     # (TASK_FORMAT.md section 2). Never on live data. See CONTRIBUTING.md.
     if task.get("writes") and not env.get("AGENTSWITCH_RUN_ID"):
-        return _fail(task_id, title, "not run: write task, and AGENTSWITCH_RUN_ID is not set "
-                                     "(not a harness run on a copy)")
+        return None
     try:
-        r = task["run"](env) or {}
+        return {"id": task_id, "title": title, **_check(task["run"](env))}
     except InfraError as e:
         return _fail(task_id, title, str(e))
     except Exception as e:  # a bug in a task must show up, not be dropped
         return _fail(task_id, title, f"{type(e).__name__} in task")
-    score = min(1.0, max(0.0, float(r.get("score", 0.0))))
-    return {"id": task_id, "title": title, "passed": bool(r.get("passed", False)),
-            "score": score, "evidence": str(r.get("evidence", ""))}
 
 
 def main(argv=None):
@@ -57,15 +87,27 @@ def main(argv=None):
     ap.add_argument("--out", default="results.json")
     args = ap.parse_args(argv)
     env = {k: os.environ.get(k) for k in ENV_KEYS}
-    results = [run_one(t, env) for t in discover()]
-    passed = sum(1 for r in results if r["passed"])
     instance = env.get("AGENTSWITCH_INSTANCE") or "unknown"
-    report = {"tasks": results,
-              "summary": f"{instance}: {passed}/{len(results)} tasks passed"}
+    results, not_run = [], []
+    for task in discover():
+        r = run_one(task, env)
+        if r is None:
+            not_run.append(f"{instance}:{task['id']}")
+        else:
+            results.append(r)
+    passed = sum(1 for r in results if r["passed"])
+    summary = f"{instance}: {passed}/{len(results)} tasks passed"
+    report = {"tasks": results, "summary": summary}
+    if not_run:  # local runs only: a harness run always sets AGENTSWITCH_RUN_ID
+        report["summary"] += (f"; {len(not_run)} write task(s) not run "
+                              "(local run, not a harness copy)")
+        report["not_run"] = not_run
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
     for r in results:
         print(f"{'PASS' if r['passed'] else 'FAIL'}  {r['id']}  {r['evidence']}")
+    for task_id in not_run:
+        print(f"SKIP  {task_id}  write task, local run")
     print(report["summary"])
 
 

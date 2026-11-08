@@ -45,9 +45,10 @@ python -m unittest discover -s tests -t .                           # offline te
 
 ## Rules for every task
 
+- `run(env)` returns `{"passed": True/False, "score": 0–1 (optional), "evidence": "..."}`. Without a score, it follows `passed` (1.0 or 0.0). Any other shape, or `passed` and `score` that disagree, is reported as an infrastructure failure.
 - `passed` comes from the HTTP / JSON-RPC result or the data, never from what an agent says.
 - Inputs are built at run time from the token and the copy. A harness run has one token, one instance and no internet.
-- If a check cannot be made, raise `client.InfraError`. It is reported as an infrastructure failure, never as a pass.
+- If a check cannot be made, raise `client.InfraError`. It is reported as an infrastructure failure, never as a pass. A task file that fails to import is reported the same way, and the other tasks still run.
 - An empty 200 is not a refusal. Use `client.refused()`.
-- **Writes (tasks 4–8):** set `"writes": True`. The runner then runs the task only inside a harness run, which is always on a copy (`AGENTSWITCH_RUN_ID` set). Locally it is skipped and shown as "not run". Do not set `AGENTSWITCH_RUN_ID` yourself. Any live write needs platform-team approval first (`../CONTRIBUTING.md`).
+- **Writes (tasks 4–8):** set `"writes": True`. The runner then runs the task only inside a harness run, which is always on a copy (`AGENTSWITCH_RUN_ID` set). On a local run it is skipped: shown as `SKIP`, listed under `not_run` in `results.json`, and left out of the passed/total count. Do not set `AGENTSWITCH_RUN_ID` yourself. Any live write needs platform-team approval first (`../CONTRIBUTING.md`).
 - `evidence` holds codes and counts only. Never the token, and never record contents.
