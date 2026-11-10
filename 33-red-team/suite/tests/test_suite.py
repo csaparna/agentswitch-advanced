@@ -68,7 +68,7 @@ class Base(unittest.TestCase):
         threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
         cls.env = {"AGENTSWITCH_BASE_URL": f"http://127.0.0.1:{cls.srv.server_port}",
                    "AGENTSWITCH_TOKEN": GOOD, "AGENTSWITCH_INSTANCE": "suryodaya",
-                   "AGENTSWITCH_RUN_ID": None}
+                   "AGENTSWITCH_RUN_ID": "test-run"}   # the stub stands in for a harness copy
 
     @classmethod
     def tearDownClass(cls):
@@ -146,14 +146,33 @@ class Runner(Base):
         self.assertInfra(self.run_task(t01.TASK, AGENTSWITCH_BASE_URL=f"http://127.0.0.1:{port}"),
                          "network error")
 
-    def test_write_task_skipped_outside_harness(self):
+    def test_copy_only_task_skipped_outside_harness(self):
         called = []
-        task = {"id": "w", "title": "w", "writes": True,
+        task = {"id": "c", "title": "c", "copy_only": True,
                 "run": lambda env: called.append(1) or {"passed": True}}
-        self.assertIsNone(self.run_task(task))
+        self.assertIsNone(self.run_task(task, AGENTSWITCH_RUN_ID=None))
         self.assertEqual(called, [])
-        self.assertTrue(self.run_task(task, AGENTSWITCH_RUN_ID="run-1")["passed"])
+        self.assertTrue(self.run_task(task)["passed"])
         self.assertEqual(called, [1])
+
+    def test_copy_only_task_refused_on_live_system(self):
+        called = []
+        task = {"id": "c", "title": "c", "copy_only": True,
+                "run": lambda env: called.append(1) or {"passed": True}}
+        for url in ["https://agentswitch.theschoolofai.in",
+                    "https://class.agentswitch.theschoolofai.in/api/mcp",
+                    "https://AgentSwitch.theschoolofai.in/"]:
+            with self.subTest(url=url):
+                self.assertInfra(self.run_task(task, AGENTSWITCH_BASE_URL=url),
+                                 "refused: copy-only task")
+        self.assertEqual(called, [])
+
+    def test_auth_tasks_are_copy_only(self):
+        self.assertTrue(t01.TASK["copy_only"])
+        self.assertTrue(t02.TASK["copy_only"])
+        rep = self._main({"AGENTSWITCH_RUN_ID": None})   # a local run sends no auth probe
+        self.assertIn("suryodaya:rt_auth_no_token", rep["not_run"])
+        self.assertIn("suryodaya:rt_auth_tampered_token", rep["not_run"])
 
     def test_task_bug_is_infrastructure_and_hides_message(self):
         def boom(env):
@@ -211,8 +230,8 @@ class Runner(Base):
             return json.load(f)
 
     def test_results_file_shape(self):
-        rep = self._main()
-        expected = [t for t in runner.discover() if not t.get("writes")]
+        rep = self._main()   # harness run on the stub copy: every task runs
+        expected = runner.discover()
         self.assertEqual(len(rep["tasks"]), len(expected))
         self.assertRegex(rep["summary"], rf"^suryodaya: \d+/{len(expected)} tasks passed")
         for t in rep["tasks"]:
@@ -220,14 +239,15 @@ class Runner(Base):
             self.assertTrue(t["id"].startswith("suryodaya:"))
             self.assertNotIn(GOOD, json.dumps(t))
 
-    def test_skipped_write_tasks_not_counted(self):
-        w = {"id": "w", "title": "w", "writes": True, "run": lambda env: {"passed": True}}
-        with mock.patch.object(runner, "discover", return_value=[t01.TASK, w]):
-            rep = self._main()
+    def test_skipped_copy_only_tasks_not_counted(self):
+        r = {"id": "r", "title": "r", "run": lambda env: {"passed": True}}
+        c = {"id": "c", "title": "c", "copy_only": True, "run": lambda env: {"passed": True}}
+        with mock.patch.object(runner, "discover", return_value=[r, c]):
+            rep = self._main({"AGENTSWITCH_RUN_ID": None})   # local run
             self.assertEqual(rep["summary"], "suryodaya: 1/1 tasks passed; "
-                                             "1 write task(s) not run (local run, not a harness copy)")
-            self.assertEqual(rep["not_run"], ["suryodaya:w"])
-            rep = self._main({"AGENTSWITCH_RUN_ID": "run-1"})   # harness run: nothing skipped
+                                             "1 copy-only task(s) not run (local run, not a harness copy)")
+            self.assertEqual(rep["not_run"], ["suryodaya:c"])
+            rep = self._main()   # harness run: nothing skipped
             self.assertEqual(rep["summary"], "suryodaya: 2/2 tasks passed")
             self.assertNotIn("not_run", rep)
 

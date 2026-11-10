@@ -1,5 +1,6 @@
 """Task 2 (owner: Ramesh). Our token with a few characters changed must be refused with
-HTTP 401. Tokens are opaque, not JWTs. Read-only: two tools/list calls.
+HTTP 401. Tokens are opaque, not JWTs. Read-only: two tools/list calls. Copy only:
+it runs on the harness copy, never against the live systems.
 
 A control call with the real token comes first. If the real token does not work,
 a 401 for the changed one proves nothing, so that is reported as infrastructure."""
@@ -23,4 +24,4 @@ def run(env):
 
 
 TASK = {"id": "rt_auth_tampered_token", "title": "MCP call with a changed token is refused (401)",
-        "run": run}
+        "copy_only": True, "run": run}

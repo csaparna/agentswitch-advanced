@@ -11,8 +11,9 @@ Rules (34-eval-harness/TASK_FORMAT.md section 3, PLAN.md, CONTRIBUTING.md):
   infrastructure failure, not as a pass.
 - A refusal check passes only on a real refusal: use client.refused(). An empty 200 is not
   a refusal.
-- A task that writes must set "writes": True. The runner then runs it only inside a harness
-  run on a copy (AGENTSWITCH_RUN_ID set), never on live data.
+- A task that writes data, or sends a missing or changed token, must set "copy_only": True.
+  The runner then runs it only inside a harness run on a copy (AGENTSWITCH_RUN_ID set),
+  never against the live systems.
 - Put codes and counts in `evidence`. Never the token, and never record contents.
 """
 from harness import client
@@ -27,4 +28,4 @@ def run(env):
 
 
 TASK = {"id": "rt_example", "title": "Example: a tool our login should not reach is refused",
-        "writes": False, "run": run}
+        "copy_only": False, "run": run}

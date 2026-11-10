@@ -8,11 +8,20 @@ import importlib
 import json
 import os
 import pkgutil
+import urllib.parse
 
 from harness.client import InfraError
 
 ENV_KEYS = ("AGENTSWITCH_BASE_URL", "AGENTSWITCH_TOKEN",
             "AGENTSWITCH_INSTANCE", "AGENTSWITCH_RUN_ID")
+
+# The live systems. A copy-only task never runs against these.
+LIVE_HOSTS = {"agentswitch.theschoolofai.in", "class.agentswitch.theschoolofai.in"}
+
+
+def is_live(env):
+    host = urllib.parse.urlparse(env.get("AGENTSWITCH_BASE_URL") or "").hostname or ""
+    return host in LIVE_HOSTS
 
 
 def _load_failed(name, reason):
@@ -67,13 +76,18 @@ def _fail(task_id, title, reason):
 
 
 def run_one(task, env):
-    """One task's result, or None when a write task is skipped on a local run."""
+    """One task's result, or None when a copy-only task is skipped on a local run."""
     instance = env.get("AGENTSWITCH_INSTANCE") or "unknown"
     task_id, title = f"{instance}:{task['id']}", task["title"]
-    # A write task runs only inside a harness run, which is always on a copy
-    # (TASK_FORMAT.md section 2). Never on live data. See CONTRIBUTING.md.
-    if task.get("writes") and not env.get("AGENTSWITCH_RUN_ID"):
-        return None
+    # A copy-only task (writes, missing or changed tokens) runs only inside a harness
+    # run, which is always on a copy (TASK_FORMAT.md section 2), and never against a
+    # live system. See README.md and CONTRIBUTING.md.
+    if task.get("copy_only"):
+        if not env.get("AGENTSWITCH_RUN_ID"):
+            return None
+        if is_live(env):
+            return _fail(task_id, title, "refused: copy-only task, and "
+                                         "AGENTSWITCH_BASE_URL is a live system")
     try:
         return {"id": task_id, "title": title, **_check(task["run"](env))}
     except InfraError as e:
@@ -99,7 +113,7 @@ def main(argv=None):
     summary = f"{instance}: {passed}/{len(results)} tasks passed"
     report = {"tasks": results, "summary": summary}
     if not_run:  # local runs only: a harness run always sets AGENTSWITCH_RUN_ID
-        report["summary"] += (f"; {len(not_run)} write task(s) not run "
+        report["summary"] += (f"; {len(not_run)} copy-only task(s) not run "
                               "(local run, not a harness copy)")
         report["not_run"] = not_run
     with open(args.out, "w", encoding="utf-8") as f:
@@ -107,7 +121,7 @@ def main(argv=None):
     for r in results:
         print(f"{'PASS' if r['passed'] else 'FAIL'}  {r['id']}  {r['evidence']}")
     for task_id in not_run:
-        print(f"SKIP  {task_id}  write task, local run")
+        print(f"SKIP  {task_id}  copy-only task, local run")
     print(report["summary"])
 
 
