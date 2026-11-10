@@ -30,8 +30,8 @@ Each person writes their v1 tasks in `suite/` (one file per task, see `suite/REA
 | Owner | v1 tasks | Also |
 |---|---|---|
 | Ramesh | 1–2 (auth and tokens) | Suite setup by Wed 11 Nov; review and merge PRs; 20 Dec integration run; final README and demo. The cross-system token check stays a live check in `replay/` |
-| Padmanabh | 3–5 (email privacy, skill and task writes) | Follow-up PR with his extra catalogue attempts (`Item.*` access, support and projects scope, out-of-grant deny, wildcard `company_id`) |
-| Sagar | 6–8 (memory, tool-policy and persona writes) | Prompt-injection test plan for the 20 Dec run, on the copy only (support tickets, `email_to_ticket`, `render_macro`, `translate`) |
+| Padmanabh | 3–5 (email privacy, skill and task writes) | Follow-up PR with his extra catalogue attempts |
+| Sagar | 6–8 (memory, tool-policy and persona writes) | Prompt-injection test plan for the 20 Dec run (copy only) |
 | csaparna | 9–12 (bug tracking and scope) | Tasks 11–12 defined from the scope sweep (PR #14, `docs/scope-sweep.md`); triage BUG-33-001/002 with the platform owner; update by Fri 13 Nov; handover note to Ramesh by 13 Dec |
 
 Tasks 4–8 write data, so they run only on the harness copy (see below and `CONTRIBUTING.md`).
@@ -100,7 +100,7 @@ Two different things run our tests. Neither runs as GitHub CI, since both need a
 
 The same statuses go in `suite/bug-status.json`, which tasks 9 and 10 read at run time. When a status changes, update both.
 
-Mission-control incidents being reachable (no data yet) is catalogue attempt-03, marked **Unclear** — re-test when incident data exists; it becomes a finding only if it then discloses data.
+Catalogue attempt-03 is marked **Unclear**: re-test when data exists. It becomes a finding only if it then discloses data.
 
 ## Cadence
 - **Every Sunday** in the seat group: what we finished, what is next, one blocker.
@@ -109,8 +109,8 @@ Mission-control incidents being reachable (no data yet) is catalogue attempt-03,
 
 ## Open questions for the instructor
 1. **Harness location.** `agentswitch-harness.toml` must sit at a repository root, and this shared repo has one root for eight seats. Can our `TeamHarness` link point to a separate repo, or to a branch in our fork whose root is the harness?
-2. **Inventory access (please confirm).** The seat brief (`33-red-team/README.md`) and the login reply both say crm, email, support, projects. The 3 Nov note says email, support, projects and inventory. We assume the brief is right; please confirm. It matters because `Item.*` tools are listed for our login and `Item.list` returns data today: if the brief is right, that is a finding, and `rt_scope_inventory_denied` joins the suite.
-3. **Filing bugs.** We filed BUG-33-001 and BUG-33-002 in the app on 6 Nov ("Report a problem"); they show Received. Is that the right channel? Three copies we first filed with the `BugReport.create` tool did not appear under "Your reports", so we re-filed them in the app. Please treat the tool copies as duplicates.
+2. **Inventory access (please confirm).** The seat brief (`33-red-team/README.md`) and the login reply both say crm, email, support, projects. The 3 Nov note says email, support, projects and inventory. We assume the brief is right; please confirm. It decides whether our login's access to inventory is a finding. If it is, `rt_scope_inventory_denied` joins the suite.
+3. **Filing bugs.** We filed BUG-33-001 and BUG-33-002 in the app on 6 Nov ("Report a problem"); they show Received. Is that the right channel? Three earlier copies of these reports are duplicates and can be closed.
 4. **Test-record cleanup.** Agents cannot delete what they create (`AgentTodo` / `AgentMemory` have no delete tool). Who purges labelled red-team test records on live data?
 5. **Integration run data.** Does the 20 Dec integration run use live data or a copy? Our write and injection tests run there only if it is a copy.
 6. **Definition of done.** Items 1 and 4 depend on the platform owner as well as on us. We read them as described under "Definition of done" above. Please confirm.
