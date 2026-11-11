@@ -88,10 +88,14 @@ def run(env):
     )
     code = client.error_code(data_u)
     if not client.refused(st_u, data_u, err_u):
+        if err_u:
+            raise client.InfraError(
+                f"AgentTask.update non-refusal error HTTP {st_u} code={code}"
+            )
         return {
             "passed": False,
             "score": 0.0,
-            "evidence": f"verifier=task_write; write_not_denied HTTP {st_u} code={code}",
+            "evidence": f"verifier=task_write; write_accepted HTTP {st_u} code={code}",
         }
 
     st_g, data_g, err_g = client.tool(env, "AgentTask.get", {"id": tid})

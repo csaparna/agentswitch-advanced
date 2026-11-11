@@ -88,6 +88,10 @@ def run(env):
     )
     code = client.error_code(data_u)
     if not client.refused(st_u, data_u, err_u):
+        if err_u:
+            raise client.InfraError(
+                f"AgentSkill.update non-refusal error HTTP {st_u} code={code}"
+            )
         return {
             "passed": False,
             "score": 0.0,

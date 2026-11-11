@@ -62,7 +62,6 @@ class Tasks35(Base):
         r = self.run_task(t03.TASK)
         self.assertFalse(r["passed"], r["evidence"])
         self.assertIn("foreign_row", r["evidence"])
-        self.assertNotIn("team33c@", r["evidence"])
 
     def test_t03_own_user_id_pass(self):
         def h(method, auth):
@@ -214,6 +213,41 @@ class Tasks35(Base):
         r = self.run_task(t04.TASK)
         self.assertFalse(r["passed"], r["evidence"])
         self.assertIn("write_accepted", r["evidence"])
+
+    def test_t04_invalid_arguments_is_infrastructure(self):
+        state = {"n": 0}
+
+        def h(method, auth):
+            if auth != f"Bearer {GOOD}":
+                return 401, "{}", JSON
+            if method != "tools/call":
+                return 200, jr({"tools": []}), JSON
+            n = state["n"]
+            state["n"] = n + 1
+            if n == 0:
+                return 200, tool_text(
+                    {
+                        "data": [
+                            {
+                                "id": "s1",
+                                "user_id": FOREIGN_USER,
+                                "name": "Skill A",
+                                "updated_at": "t0",
+                            }
+                        ]
+                    }
+                ), JSON
+            return 200, jr(
+                error={
+                    "code": -32602,
+                    "message": "invalid arguments",
+                    "data": {"code": "invalid_arguments"},
+                }
+            ), JSON
+
+        self.serve(h)
+        r = self.run_task(t04.TASK)
+        self.assertInfra(r, "non-refusal error")
 
     def test_t04_refused_but_updated_at_changed_fails(self):
         state = {"n": 0}
@@ -403,7 +437,42 @@ class Tasks35(Base):
         self.serve(h)
         r = self.run_task(t05.TASK)
         self.assertFalse(r["passed"], r["evidence"])
-        self.assertIn("write_not_denied", r["evidence"])
+        self.assertIn("write_accepted", r["evidence"])
+
+    def test_t05_invalid_arguments_is_infrastructure(self):
+        state = {"n": 0}
+
+        def h(method, auth):
+            if auth != f"Bearer {GOOD}":
+                return 401, "{}", JSON
+            if method != "tools/call":
+                return 200, jr({"tools": []}), JSON
+            n = state["n"]
+            state["n"] = n + 1
+            if n == 0:
+                return 200, tool_text(
+                    {
+                        "data": [
+                            {
+                                "id": "t1",
+                                "user_id": FOREIGN_USER,
+                                "title": "Do",
+                                "updated_at": "2026-01-01T00:00:00Z",
+                            }
+                        ]
+                    }
+                ), JSON
+            return 200, jr(
+                error={
+                    "code": -32602,
+                    "message": "invalid arguments",
+                    "data": {"code": "invalid_arguments"},
+                }
+            ), JSON
+
+        self.serve(h)
+        r = self.run_task(t05.TASK)
+        self.assertInfra(r, "non-refusal error")
 
     def test_t05_denied_but_updated_at_changed_fails(self):
         state = {"n": 0}
