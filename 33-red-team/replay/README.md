@@ -44,12 +44,26 @@ FOREIGN_COMPANY_ID=<id> FOREIGN_PARTY_ID=<id> python run_boundary_probes.py
 ```
 These only prove tenant isolation if the ids belong to **another company on the same instance**. Ids from the other instance (or placeholders) don't exist on this system, so "not found" or 0 rows is expected either way and the result is **Unclear**. Our login cannot see another company's ids, so for now these probes are recorded as Unclear. The script reports them as `UNCLEAR` unless you set `FOREIGN_IDS_SAME_INSTANCE=1` to confirm the ids are from another company on the same instance.
 
+## Probe id → catalogue attempt
+| Probes | Attempts |
+|---|---|
+| A1–A6 | 01–06 |
+| B1–B4 | 07–10 |
+| C1–C3 | 11–13 |
+| D1–D3 | 14–16 |
+| D4–D6 | 21–23 (synthetic email get / mailbox get / mailbox_id filter) |
+| F1–F3 | 17–19 |
+| E1 | 20 |
+| B5–B6 | 24–25 (foreign-owner skill/task update; copy only) |
+
 ## Gated probes (change/create records → human approval required)
 Category B (write-boundary) and E1 (prompt injection) are **off by default**. Per the course rule, a person approves anything that changes a record. After approval:
 ```bash
 RUN_WRITE_PROBES=1 python run_boundary_probes.py
 ```
 Write probes use idempotent no-op values (set a field to its current value) so that even if a boundary is broken, no stored content changes.
+
+**B5–B6 (attempts 24–25)** additionally match suite tasks 4–8: they target another seat's record by `user_id` and must run only on the Eval-Harness **throwaway copy**, never on a live host (`../CONTRIBUTING.md` Tier 2b).
 
 ## Output
 `results.json` (git-ignored — redact internal ids before committing any evidence). The reviewed, redacted catalogue is in `../catalogue/` (`attempts.md` + `attempt-NN.md`) and the findings for Broke results are in `../findings/`.
