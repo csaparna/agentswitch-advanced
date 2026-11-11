@@ -18,6 +18,7 @@ from harness.tasks import t01_auth_no_token as t01, t02_auth_tampered_token as t
 
 GOOD = "good-token-" + "x" * 32
 JSON, SSE = "application/json", "text/event-stream"
+ME = {"id": "me-user", "email": "seat@example.com", "company_id": "c1"}
 
 
 def jr(result=None, error=None):
@@ -46,6 +47,29 @@ def open_server(method, auth):
 
 class Stub(BaseHTTPRequestHandler):
     handler = staticmethod(strict)
+    me = dict(ME)
+
+    def do_GET(self):
+        path = self.path.split("?", 1)[0]
+        if path != "/api/auth/me":
+            self.send_response(404)
+            self.end_headers()
+            return
+        auth = self.headers.get("Authorization")
+        if auth != f"Bearer {GOOD}":
+            raw = b'{"error":"unauthorized"}'
+            self.send_response(401)
+            self.send_header("Content-Type", JSON)
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+            return
+        raw = json.dumps(Stub.me).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", JSON)
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
 
     def do_POST(self):
         req = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
@@ -76,6 +100,7 @@ class Base(unittest.TestCase):
 
     def setUp(self):
         Stub.handler = staticmethod(strict)
+        Stub.me = dict(ME)
 
     def serve(self, fn):
         Stub.handler = staticmethod(fn)

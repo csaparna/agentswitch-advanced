@@ -2,20 +2,29 @@
 
     cd 33-red-team/suite && python -m unittest discover -s tests -t .
 """
-import json
 import unittest
 
 from harness.tasks import t03_email_privacy as t03
 from harness.tasks import t04_skill_write_blocked as t04
 from harness.tasks import t05_task_write_foreign as t05
-from tests.test_suite import JSON, Base, GOOD, jr, tool_text
+from tests.test_suite import JSON, ME, Base, GOOD, jr, tool_text
 
 
-def _parse_call(raw):
-    req = json.loads(raw)
-    args = (req.get("params") or {}).get("arguments") or {}
-    name = (req.get("params") or {}).get("name")
-    return name, args
+FOREIGN_USER = "other-user"
+
+
+def _denied(code="permission_denied", rpc=-32001, message="Permission denied"):
+    return 200, jr(
+        error={"code": rpc, "message": message, "data": {"code": code}}
+    ), JSON
+
+
+def _not_available():
+    return _denied(
+        code="tool_not_available",
+        rpc=-32602,
+        message="not in your tools/list",
+    )
 
 
 class Tasks35(Base):
@@ -38,21 +47,51 @@ class Tasks35(Base):
         self.assertEqual(r["id"], "suryodaya:rt_email_privacy")
         self.assertIn("empty_lists", r["evidence"])
 
-    def test_t03_foreign_email_fails(self):
+    def test_t03_foreign_user_id_fails(self):
         def h(method, auth):
             if auth != f"Bearer {GOOD}":
                 return 401, "{}", JSON
             if method != "tools/call":
                 return 200, jr({"tools": []}), JSON
-            # EmailMessage.list returns a foreign address; others empty
             return 200, tool_text(
-                {"data": [{"id": "1", "email": "other@example.com"}]}
+                {"data": [{"id": "1", "user_id": FOREIGN_USER, "email": "other@example.com"}],
+                 "total": 1}
             ), JSON
 
         self.serve(h)
-        r = self.run_task(t03.TASK, EMAIL="team33c@theschoolofai.in")
+        r = self.run_task(t03.TASK)
         self.assertFalse(r["passed"], r["evidence"])
         self.assertIn("foreign_row", r["evidence"])
+        self.assertNotIn("team33c@", r["evidence"])
+
+    def test_t03_own_user_id_pass(self):
+        def h(method, auth):
+            if auth != f"Bearer {GOOD}":
+                return 401, "{}", JSON
+            if method != "tools/call":
+                return 200, jr({"tools": []}), JSON
+            return 200, tool_text(
+                {"data": [{"id": "1", "user_id": ME["id"], "email": "seat@example.com"}],
+                 "total": 1}
+            ), JSON
+
+        self.serve(h)
+        r = self.run_task(t03.TASK)
+        self.assertTrue(r["passed"], r["evidence"])
+        self.assertIn("own_scope_only", r["evidence"])
+
+    def test_t03_list_refusal_pass(self):
+        def h(method, auth):
+            if auth != f"Bearer {GOOD}":
+                return 401, "{}", JSON
+            if method != "tools/call":
+                return 200, jr({"tools": []}), JSON
+            return _denied()
+
+        self.serve(h)
+        r = self.run_task(t03.TASK)
+        self.assertTrue(r["passed"], r["evidence"])
+        self.assertIn("refused", r["evidence"])
 
     def test_t04_empty_list_pass(self):
         def h(method, auth):
@@ -67,30 +106,76 @@ class Tasks35(Base):
         self.assertTrue(r["passed"], r["evidence"])
         self.assertIn("no_other_seat_skill", r["evidence"])
 
-    def test_t04_tool_not_available_pass(self):
-        state = {"phase": "list"}
+    def test_t04_own_record_only_pass_no_write(self):
+        state = {"n": 0, "wrote": False}
 
         def h(method, auth):
             if auth != f"Bearer {GOOD}":
                 return 401, "{}", JSON
             if method != "tools/call":
                 return 200, jr({"tools": []}), JSON
-            # Read body via side channel: Stub only passes method/auth.
-            # Alternate responses by call count.
+            n = state["n"]
+            state["n"] = n + 1
+            if n == 0:
+                return 200, tool_text(
+                    {
+                        "data": [
+                            {
+                                "id": "s1",
+                                "user_id": ME["id"],
+                                "name": "Mine",
+                                "updated_at": "t0",
+                            }
+                        ]
+                    }
+                ), JSON
+            state["wrote"] = True
+            return 200, tool_text({"id": "s1"}), JSON
+
+        self.serve(h)
+        r = self.run_task(t04.TASK)
+        self.assertTrue(r["passed"], r["evidence"])
+        self.assertIn("no_other_seat_skill", r["evidence"])
+        self.assertFalse(state["wrote"])
+
+    def test_t04_list_refusal_pass(self):
+        def h(method, auth):
+            if auth != f"Bearer {GOOD}":
+                return 401, "{}", JSON
+            if method != "tools/call":
+                return 200, jr({"tools": []}), JSON
+            return _denied()
+
+        self.serve(h)
+        r = self.run_task(t04.TASK)
+        self.assertTrue(r["passed"], r["evidence"])
+        self.assertIn("refused", r["evidence"])
+
+    def test_t04_tool_not_available_pass(self):
+        state = {"n": 0}
+
+        def h(method, auth):
+            if auth != f"Bearer {GOOD}":
+                return 401, "{}", JSON
+            if method != "tools/call":
+                return 200, jr({"tools": []}), JSON
             n = state.get("n", 0)
             state["n"] = n + 1
             if n == 0:  # list
                 return 200, tool_text(
-                    {"data": [{"id": "s1", "name": "Skill A", "updated_at": "t0"}]}
-                ), JSON
-            if n == 1:  # update
-                return 200, jr(
-                    error={
-                        "code": -32602,
-                        "message": "not in your tools/list",
-                        "data": {"code": "tool_not_available"},
+                    {
+                        "data": [
+                            {
+                                "id": "s1",
+                                "user_id": FOREIGN_USER,
+                                "name": "Skill A",
+                                "updated_at": "t0",
+                            }
+                        ]
                     }
                 ), JSON
+            if n == 1:  # update
+                return _not_available()
             return 200, tool_text(
                 {"id": "s1", "name": "Skill A", "updated_at": "t0"}
             ), JSON  # get
@@ -111,13 +196,95 @@ class Tasks35(Base):
             n = state["n"]
             state["n"] = n + 1
             if n == 0:
-                return 200, tool_text({"data": [{"id": "s1", "name": "Skill A"}]}), JSON
-            return 200, tool_text({"id": "s1", "name": "Skill A"}), JSON
+                return 200, tool_text(
+                    {
+                        "data": [
+                            {
+                                "id": "s1",
+                                "user_id": FOREIGN_USER,
+                                "name": "Skill A",
+                                "updated_at": "t0",
+                            }
+                        ]
+                    }
+                ), JSON
+            return 200, tool_text({"id": "s1", "name": "Skill A", "updated_at": "t0"}), JSON
 
         self.serve(h)
         r = self.run_task(t04.TASK)
         self.assertFalse(r["passed"], r["evidence"])
         self.assertIn("write_accepted", r["evidence"])
+
+    def test_t04_refused_but_updated_at_changed_fails(self):
+        state = {"n": 0}
+
+        def h(method, auth):
+            if auth != f"Bearer {GOOD}":
+                return 401, "{}", JSON
+            if method != "tools/call":
+                return 200, jr({"tools": []}), JSON
+            n = state["n"]
+            state["n"] = n + 1
+            if n == 0:
+                return 200, tool_text(
+                    {
+                        "data": [
+                            {
+                                "id": "s1",
+                                "user_id": FOREIGN_USER,
+                                "name": "Skill A",
+                                "updated_at": "t0",
+                            }
+                        ]
+                    }
+                ), JSON
+            if n == 1:
+                return _denied()
+            return 200, tool_text(
+                {"id": "s1", "name": "Skill A", "updated_at": "t1"}
+            ), JSON
+
+        self.serve(h)
+        r = self.run_task(t04.TASK)
+        self.assertFalse(r["passed"], r["evidence"])
+        self.assertIn("updated_at_changed", r["evidence"])
+
+    def test_t04_get_failure_after_refuse_infra(self):
+        state = {"n": 0}
+
+        def h(method, auth):
+            if auth != f"Bearer {GOOD}":
+                return 401, "{}", JSON
+            if method != "tools/call":
+                return 200, jr({"tools": []}), JSON
+            n = state["n"]
+            state["n"] = n + 1
+            if n == 0:
+                return 200, tool_text(
+                    {
+                        "data": [
+                            {
+                                "id": "s1",
+                                "user_id": FOREIGN_USER,
+                                "name": "Skill A",
+                                "updated_at": "t0",
+                            }
+                        ]
+                    }
+                ), JSON
+            if n == 1:
+                return _denied()
+            return 200, jr(
+                error={
+                    "code": -32004,
+                    "message": "not found",
+                    "data": {"code": "not_found"},
+                }
+            ), JSON
+
+        self.serve(h)
+        r = self.run_task(t04.TASK)
+        self.assertInfra(r, "AgentSkill.get")
 
     def test_t05_permission_denied_unchanged_pass(self):
         state = {"n": 0}
@@ -135,6 +302,7 @@ class Tasks35(Base):
                         "data": [
                             {
                                 "id": "t1",
+                                "user_id": FOREIGN_USER,
                                 "title": "Do",
                                 "updated_at": "2026-01-01T00:00:00Z",
                             }
@@ -142,13 +310,7 @@ class Tasks35(Base):
                     }
                 ), JSON
             if n == 1:
-                return 200, jr(
-                    error={
-                        "code": -32001,
-                        "message": "Permission denied",
-                        "data": {"code": "permission_denied"},
-                    }
-                ), JSON
+                return _denied()
             return 200, tool_text(
                 {
                     "id": "t1",
@@ -161,6 +323,51 @@ class Tasks35(Base):
         r = self.run_task(t05.TASK)
         self.assertTrue(r["passed"], r["evidence"])
         self.assertIn("permission_denied", r["evidence"])
+
+    def test_t05_own_record_only_pass_no_write(self):
+        state = {"n": 0, "wrote": False}
+
+        def h(method, auth):
+            if auth != f"Bearer {GOOD}":
+                return 401, "{}", JSON
+            if method != "tools/call":
+                return 200, jr({"tools": []}), JSON
+            n = state["n"]
+            state["n"] = n + 1
+            if n == 0:
+                return 200, tool_text(
+                    {
+                        "data": [
+                            {
+                                "id": "t1",
+                                "user_id": ME["id"],
+                                "title": "Mine",
+                                "updated_at": "t0",
+                            }
+                        ]
+                    }
+                ), JSON
+            state["wrote"] = True
+            return 200, tool_text({"id": "t1"}), JSON
+
+        self.serve(h)
+        r = self.run_task(t05.TASK)
+        self.assertTrue(r["passed"], r["evidence"])
+        self.assertIn("no_other_seat_task", r["evidence"])
+        self.assertFalse(state["wrote"])
+
+    def test_t05_list_refusal_pass(self):
+        def h(method, auth):
+            if auth != f"Bearer {GOOD}":
+                return 401, "{}", JSON
+            if method != "tools/call":
+                return 200, jr({"tools": []}), JSON
+            return _denied()
+
+        self.serve(h)
+        r = self.run_task(t05.TASK)
+        self.assertTrue(r["passed"], r["evidence"])
+        self.assertIn("refused", r["evidence"])
 
     def test_t05_write_succeeds_fails(self):
         state = {"n": 0}
@@ -178,6 +385,7 @@ class Tasks35(Base):
                         "data": [
                             {
                                 "id": "t1",
+                                "user_id": FOREIGN_USER,
                                 "title": "Do",
                                 "updated_at": "2026-01-01T00:00:00Z",
                             }
@@ -213,6 +421,7 @@ class Tasks35(Base):
                         "data": [
                             {
                                 "id": "t1",
+                                "user_id": FOREIGN_USER,
                                 "title": "Do",
                                 "updated_at": "2026-01-01T00:00:00Z",
                             }
@@ -220,13 +429,7 @@ class Tasks35(Base):
                     }
                 ), JSON
             if n == 1:
-                return 200, jr(
-                    error={
-                        "code": -32001,
-                        "message": "Permission denied",
-                        "data": {"code": "permission_denied"},
-                    }
-                ), JSON
+                return _denied()
             return 200, tool_text(
                 {
                     "id": "t1",
@@ -239,6 +442,37 @@ class Tasks35(Base):
         r = self.run_task(t05.TASK)
         self.assertFalse(r["passed"], r["evidence"])
         self.assertIn("updated_at_changed", r["evidence"])
+
+    def test_t05_get_failure_after_refuse_infra(self):
+        state = {"n": 0}
+
+        def h(method, auth):
+            if auth != f"Bearer {GOOD}":
+                return 401, "{}", JSON
+            if method != "tools/call":
+                return 200, jr({"tools": []}), JSON
+            n = state["n"]
+            state["n"] = n + 1
+            if n == 0:
+                return 200, tool_text(
+                    {
+                        "data": [
+                            {
+                                "id": "t1",
+                                "user_id": FOREIGN_USER,
+                                "title": "Do",
+                                "updated_at": "2026-01-01T00:00:00Z",
+                            }
+                        ]
+                    }
+                ), JSON
+            if n == 1:
+                return _denied()
+            return 500, '{"error":"boom"}', JSON
+
+        self.serve(h)
+        r = self.run_task(t05.TASK)
+        self.assertInfra(r, "AgentTask.get")
 
     def test_copy_only_tasks_skipped_locally(self):
         from tests.test_suite import Runner
