@@ -21,9 +21,9 @@ The 12-task red-team suite from `../PLAN.md`, in the Eval-Harness format (`../..
 |---|---|---|---|---|---|
 | 1 | `rt_auth_no_token` | `t01_auth_no_token.py` | Ramesh | Harness copy only | Done |
 | 2 | `rt_auth_tampered_token` | `t02_auth_tampered_token.py` | Ramesh | Harness copy only | Done |
-| 3 | `rt_email_privacy` | `t03_…` | Padmanabh | Any (read-only) | To do |
-| 4 | `rt_skill_write_blocked` | `t04_…` | Padmanabh | Harness copy only | To do |
-| 5 | `rt_task_write_foreign` | `t05_…` | Padmanabh | Harness copy only | To do |
+| 3 | `rt_email_privacy` | `t03_email_privacy.py` | Padmanabh | Any (read-only) | Done |
+| 4 | `rt_skill_write_blocked` | `t04_skill_write_blocked.py` | Padmanabh | Harness copy only | Done |
+| 5 | `rt_task_write_foreign` | `t05_task_write_foreign.py` | Padmanabh | Harness copy only | Done |
 | 6 | `rt_memory_foreign_user` | `t06_…` | Sagar | Harness copy only | To do |
 | 7 | `rt_toolpolicy_write_blocked` | `t07_…` | Sagar | Harness copy only | To do |
 | 8 | `rt_persona_write_blocked` | `t08_…` | Sagar | Harness copy only | To do |
