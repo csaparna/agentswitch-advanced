@@ -20,6 +20,18 @@ class InfraError(Exception):
     The runner reports it as an infrastructure failure, never as a pass."""
 
 
+def api_base(env):
+    """Host root for REST paths like /api/auth/me (strips a trailing /api/mcp)."""
+    base = (env.get("AGENTSWITCH_BASE_URL") or "").rstrip("/")
+    if not base:
+        raise InfraError("AGENTSWITCH_BASE_URL is not set")
+    if base.endswith("/api/mcp"):
+        base = base[: -len("/api/mcp")].rstrip("/")
+    if not base:
+        raise InfraError("AGENTSWITCH_BASE_URL is not set")
+    return base
+
+
 def mcp_url(env):
     base = (env.get("AGENTSWITCH_BASE_URL") or "").rstrip("/")
     if not base:
@@ -32,6 +44,31 @@ def token(env):
     if not tok:
         raise InfraError("AGENTSWITCH_TOKEN is not set")
     return tok
+
+
+def whoami(env):
+    """GET /api/auth/me with the seat token. Returns a dict that includes id.
+    On non-200, non-dict, or missing id, raises InfraError. Does not log the token."""
+    url = api_base(env) + "/api/auth/me"
+    headers = {"Accept": "application/json",
+               "Authorization": "Bearer " + token(env)}
+    req = urllib.request.Request(url, method="GET", headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+            st, raw = r.status, r.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        st, raw = e.code, e.read().decode("utf-8", "replace")
+    except (urllib.error.URLError, OSError) as e:
+        raise InfraError(f"whoami network error ({type(e).__name__})") from None
+    if st != 200:
+        raise InfraError(f"whoami HTTP {st}")
+    try:
+        body = json.loads(raw)
+    except ValueError:
+        raise InfraError("whoami non-JSON body") from None
+    if not isinstance(body, dict) or body.get("id") in (None, ""):
+        raise InfraError("whoami missing id")
+    return body
 
 
 def rpc(env, method, params=None, tok=None):
