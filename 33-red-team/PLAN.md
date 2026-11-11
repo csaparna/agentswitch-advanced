@@ -30,7 +30,7 @@ Each person writes their v1 tasks in `suite/` (one file per task, see `suite/REA
 | Owner | v1 tasks | Also |
 |---|---|---|
 | Ramesh | 1–2 (auth and tokens) | Suite setup by Wed 11 Nov; review and merge PRs; 20 Dec integration run; final README and demo. The cross-system token check stays a live check in `replay/` |
-| Padmanabh | 3–5 (email privacy, skill and task writes) | Follow-up PR with his extra catalogue attempts |
+| Padmanabh | 3–5 (email privacy, skill and task writes) | Extra catalogue attempts 21–25 (21–23 synthetic-id Unclear; 24–25 → suite Tasks 4–5) |
 | Sagar | 6–8 (memory, tool-policy and persona writes) | Prompt-injection test plan for the 20 Dec run (copy only) |
 | csaparna | 9–12 (bug tracking and scope) | Tasks 11–12 defined from the scope sweep (PR #14, `docs/scope-sweep.md`); triage BUG-33-001/002 with the platform owner; update by Fri 13 Nov; handover note to Ramesh by 13 Dec |
 
