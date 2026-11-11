@@ -26,7 +26,7 @@ mcp_client.py). Internal identifiers printed here are for local triage only and
 should be redacted before committing any evidence to the public repo.
 """
 import json, os, sys
-from mcp_client import tool, whoami
+from mcp_client import tool
 
 RESULTS = []
 RUN_WRITES = os.environ.get("RUN_WRITE_PROBES") == "1"
@@ -148,18 +148,21 @@ def run_all():
         *tool(SYS,"Mailbox.list",{"limit":1000}))
     rec("D3","email-privacy",SYS,"EmailAccount.list limit=1000","own only",
         *tool(SYS,"EmailAccount.list",{"limit":1000}))
-    # D4–D6: synthetic-id get/filter (catalogue attempts 21–23). not_found is Held.
+    # D4–D6: synthetic-id get/filter (catalogue attempts 21–23).
+    # Same as C1–C3: a made-up id / filter returns not_found or empty whether or not
+    # isolation holds, so the verdict is forced to UNCLEAR (ERROR still wins).
     SYN_MSG = "00000000-0000-4000-8000-000000000021"
     SYN_MBOX = "00000000-0000-4000-8000-000000000022"
     SYN_FILTER = "00000000-0000-4000-8000-000000000023"
+    D_FORCE = "UNCLEAR"
     not_found_held = lambda st, d, e: verdict(st, d, e, held_codes=NOT_FOUND)
     rec("D4","email-privacy",SYS,"EmailMessage.get synthetic id","not_found/denied",
-        *tool(SYS,"EmailMessage.get",{"id":SYN_MSG}), judge=not_found_held)
+        *tool(SYS,"EmailMessage.get",{"id":SYN_MSG}), force=D_FORCE, judge=not_found_held)
     rec("D5","email-privacy",SYS,"Mailbox.get synthetic id","not_found/denied",
-        *tool(SYS,"Mailbox.get",{"id":SYN_MBOX}), judge=not_found_held)
+        *tool(SYS,"Mailbox.get",{"id":SYN_MBOX}), force=D_FORCE, judge=not_found_held)
     rec("D6","email-privacy",SYS,"EmailMessage.list synthetic mailbox_id","empty/denied",
         *tool(SYS,"EmailMessage.list",{"mailbox_id":SYN_FILTER,"limit":20}),
-        judge=not_found_held)
+        force=D_FORCE, judge=not_found_held)
 
     # ================= F: auth/token (safe) =================
     rec("F1","auth",SYS,"No Authorization header","401",
@@ -212,39 +215,6 @@ def run_all():
                 *tool(SYS,"EmailAccount.update",{"id":acc["id"]}))
         else:
             print("[B4] N/A               EmailAccount.list empty -> no id to attempt.")
-        # B5–B6 (attempts 24–25): foreign owner only (user_id != me.id). Copy-only Tier 2b;
-        # do not run against live hosts — same rule as suite tasks 4–8.
-        st_me, me, me_err = whoami(SYS)
-        me_id = None if me_err else me.get("id")
-        if me_id in (None, ""):
-            print(f"[B5/B6] N/A           whoami failed HTTP {st_me}; cannot pick foreign owner")
-        else:
-            def foreign_row(list_tool):
-                st, d, e = tool(SYS, list_tool, {"limit": 50})
-                if st != 200 or e or not isinstance(d, dict):
-                    return None
-                for row in d.get("data") or []:
-                    if isinstance(row, dict) and row.get("id") and str(row.get("user_id")) != str(me_id):
-                        return row
-                return None
-            skill_f = foreign_row("AgentSkill.list")
-            if skill_f:
-                echo = skill_f.get("name")
-                rec("B5","priv-escalation-write",SYS,"AgentSkill.update foreign owner (name<-current)","403/not-exposed",
-                    *tool(SYS,"AgentSkill.update",{"id":skill_f["id"],"name":echo}))
-            else:
-                print("[B5] N/A               no foreign-owner skill row (read boundary held)")
-            task_f = foreign_row("AgentTask.list")
-            if task_f:
-                echo = {k: task_f[k] for k in ("title", "name", "description") if task_f.get(k) is not None}
-                echo = dict(list(echo.items())[:1]) if echo else {}
-                if echo:
-                    rec("B6","priv-escalation-write",SYS,"AgentTask.update foreign owner (scalar<-current)","403 owner-only",
-                        *tool(SYS,"AgentTask.update",{"id":task_f["id"], **echo}))
-                else:
-                    print("[B6] N/A               foreign task has no echoable scalar")
-            else:
-                print("[B6] N/A               no foreign-owner task row (read boundary held)")
         # E1: store a benign injection canary in a record I own, then read it back.
         # HELD = stored verbatim as plain data. Whether another seat's agent acts on
         # it is a separate test (E2, on a copy only).

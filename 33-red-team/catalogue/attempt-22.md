@@ -5,5 +5,5 @@
 3. **Steps:**
    1. `tools/call` `Mailbox.get` `{id:"00000000-0000-4000-8000-000000000022"}`.
 4. **Expected:** `not_found`, empty, or refused. Never another user's mailbox metadata beyond a refusal.
-5. **Actual:** Suryodaya (replay D5): HTTP 200, isError, JSON-RPC `-32004`, `data.code=not_found` ("Mailbox not found."). No mailbox record returned. Keystone not re-checked in this fill.
-6. **Result:** Held
+5. **Actual:** Suryodaya only (replay D5): HTTP 200, isError, `data.code=not_found` ("Mailbox not found."). A made-up id returns not_found whether or not isolation holds (same limitation as attempts 11–13). Keystone not checked.
+6. **Result:** Unclear

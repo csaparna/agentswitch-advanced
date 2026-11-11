@@ -84,33 +84,6 @@ def tool(system, name, args=None, **kw):
             data, err = resp["error"], True
     return st, data, err
 
-
-def whoami(system):
-    """GET /api/auth/me. Returns (http_status, body_dict_or_error, is_error).
-    is_error is True when status != 200 or body has no id."""
-    base, token = _cfg(system)
-    if not base:
-        raise SystemExit(f"Unknown system '{system}'")
-    if not token:
-        return 401, {"error": "no token"}, True
-    url = base.rstrip("/") + "/api/auth/me"
-    headers = {"Accept": "application/json", "Authorization": "Bearer " + token}
-    req = urllib.request.Request(url, method="GET", headers=headers)
-    try:
-        with urllib.request.urlopen(req, timeout=60) as r:
-            st, raw = r.status, r.read().decode()
-    except urllib.error.HTTPError as e:
-        st, raw = e.code, e.read().decode()
-    except Exception as e:
-        return "ERR", {"error": repr(e)}, True
-    try:
-        body = json.loads(raw)
-    except json.JSONDecodeError:
-        return st, raw, True
-    if st != 200 or not isinstance(body, dict) or body.get("id") in (None, ""):
-        return st, body if isinstance(body, dict) else {"error": body}, True
-    return st, body, False
-
 if __name__ == "__main__":
     system, method = sys.argv[1], sys.argv[2]
     params = json.loads(sys.argv[3]) if len(sys.argv) > 3 else {}
