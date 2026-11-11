@@ -12,7 +12,7 @@ Systems: Suryodaya and Keystone (identical tool surface; cross-checked). Probes 
 
 **Approval.** The write attempts 07–09 and 20 ran with prior approval from the Seat 33 lead (Ramesh), given just before the run on 2026-11-03, under the course rule that a person approves any change to a record. Under the seat's current rules (`../CONTRIBUTING.md`), writes aimed at records we did not create run only on a throwaway copy, never on live data.
 
-**Result tally:** 13 Held · 2 Broke · 5 Unclear (attempts 01–20). Attempts **21–25** are Unclear until local Tier-1 replay (21–23) and a harness-copy write run (24–25).
+**Result tally:** **16 Held** · 2 Broke · 5 Unclear (attempts 01–23 on Suryodaya for 21–23). Attempts **24–25** remain Unclear until a harness-copy write run.
 
 Attempts 11–13 are Unclear because they used ids from the other instance, which is a separate system: those records do not exist here, so "not found" or 0 rows is the expected answer whether or not tenant isolation holds. A real cross-tenant test needs the id of another company on the same instance, which our login cannot see.
 
@@ -38,9 +38,9 @@ Attempts 11–13 are Unclear because they used ids from the other instance, whic
 | 18 | Malformed token | Auth | Held | -- |
 | 19 | Cross-system token | Auth | Held | -- |
 | 20 | Injection canary (own record) | Injection | Held | -- |
-| 21 | EmailMessage.get (synthetic id) | Permission | Unclear | -- (awaiting local Tier-1 replay) |
-| 22 | Mailbox.get (synthetic id) | Permission | Unclear | -- (awaiting local Tier-1 replay) |
-| 23 | EmailMessage.list (synthetic mailbox_id) | Permission | Unclear | -- (awaiting local Tier-1 replay) |
+| 21 | EmailMessage.get (synthetic id) | Permission | Held | -- |
+| 22 | Mailbox.get (synthetic id) | Permission | Held | -- |
+| 23 | EmailMessage.list (synthetic mailbox_id) | Permission | Held | -- |
 | 24 | AgentSkill.update (foreign owner) | Permission | Unclear | -- (copy only; awaiting harness copy) |
 | 25 | AgentTask.update (foreign owner) | Permission | Unclear | -- (copy only; awaiting harness copy) |
 

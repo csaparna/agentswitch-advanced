@@ -5,5 +5,5 @@
 3. **Steps:**
    1. `tools/call` `EmailMessage.list` `{mailbox_id:"00000000-0000-4000-8000-000000000023", limit:20}`.
 4. **Expected:** Empty list, `not_found`, or refused. No rows belonging to another user.
-5. **Actual:** Not filled in this PR (no live token in the authoring environment). Replay probe `D6` is wired; run locally and record `total` / row count only.
-6. **Result:** Unclear — awaiting local Tier-1 replay
+5. **Actual:** Suryodaya (replay D6): HTTP 200, `data=[]`, `total=0` (limit 20, offset 0). No foreign rows. Keystone not re-checked in this fill.
+6. **Result:** Held

@@ -5,5 +5,5 @@
 3. **Steps:**
    1. `tools/call` `EmailMessage.get` `{id:"00000000-0000-4000-8000-000000000021"}`.
 4. **Expected:** `not_found`, empty, or refused (`permission_denied` / HTTP 403 / `tool_not_available`). Never another user's message body.
-5. **Actual:** Not filled in this PR (no live token in the authoring environment). Replay probe `D4` is wired; run `python run_boundary_probes.py` locally and record HTTP / error code / that no message body was returned.
-6. **Result:** Unclear — awaiting local Tier-1 replay
+5. **Actual:** Suryodaya (replay D4): HTTP 200, isError, JSON-RPC `-32004`, `data.code=not_found` ("EmailMessage not found."). No message body returned. Keystone not re-checked in this fill.
+6. **Result:** Held
