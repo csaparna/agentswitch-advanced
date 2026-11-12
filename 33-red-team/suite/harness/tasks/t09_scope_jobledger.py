@@ -2,11 +2,32 @@
 Regression check tracking BUG-33-002 against bug-status.json.
 
 Read-only: one endpoint call.
-Passes if the call is refused, if 0 rows are returned, or if BUG-33-002
-is recorded as not fixed (new, open, wont_fix). Fails only if marked fixed
-and rows are returned (regression caught).
+The tool is resolved at run time (via harness setting or tools/list lookup)
+so no literal tool names or exploit details are published in public code.
+Passes if the call is refused, if the tool is not exposed, if 0 rows are
+returned, or if BUG-33-002 is recorded as not fixed (new, open, wont_fix).
+Fails only if marked fixed and rows are returned (regression caught).
 """
 from harness import bugs, client
+
+COMPONENT = "Agent job-ledger forensics"
+
+
+def _resolve_tool(env):
+    """Resolve the tool at run time from a harness setting or tools/list by component."""
+    setting = env.get("RT_BUG_33_002_TOOL")
+    if setting:
+        return setting
+    st, body = client.rpc(env, "tools/list", tok=client.token(env))
+    if st >= 500:
+        raise client.InfraError(f"server error HTTP {st}")
+    if st != 200 or not (isinstance(body, dict) and "result" in body):
+        raise client.InfraError(f"tools/list returned HTTP {st}")
+    for t in body.get("result", {}).get("tools", []):
+        text = (t.get("name", "") + " " + t.get("description", "")).lower()
+        if "forensic" in text:
+            return t.get("name")
+    return None
 
 
 def _count_rows(data):
@@ -23,7 +44,16 @@ def _count_rows(data):
 
 def run(env):
     st_bug = bugs.status("BUG-33-002")
-    st, data, is_error = client.tool(env, "endpoint.job_ledger.forensics", {})
+    target = _resolve_tool(env)
+    if not target:
+        # Tool is not exposed to this seat: boundary enforced
+        return {
+            "passed": True,
+            "score": 1.0,
+            "evidence": f"verifier=refusal; component={COMPONENT}; not exposed; no disclosure",
+        }
+
+    st, data, is_error = client.tool(env, target, {})
     if st >= 500:
         raise client.InfraError(f"server error HTTP {st}")
 
@@ -34,7 +64,7 @@ def run(env):
         return {
             "passed": True,
             "score": 1.0,
-            "evidence": f"verifier=refusal; endpoint.job_ledger.forensics refused -> HTTP {st}, code={code}; no disclosure",
+            "evidence": f"verifier=refusal; component={COMPONENT}; refused (code={code}); no disclosure",
         }
 
     count = _count_rows(data)
@@ -42,7 +72,7 @@ def run(env):
         return {
             "passed": True,
             "score": 1.0,
-            "evidence": f"verifier=row_count; endpoint.job_ledger.forensics returned HTTP {st} with 0 rows; no disclosure",
+            "evidence": f"verifier=row_count; component={COMPONENT}; 0 rows returned; no disclosure",
         }
 
     # Rows returned (count > 0)
@@ -66,4 +96,5 @@ TASK = {
     "copy_only": False,
     "run": run,
 }
+
 
