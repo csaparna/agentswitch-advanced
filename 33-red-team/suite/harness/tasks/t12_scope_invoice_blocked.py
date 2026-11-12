@@ -1,5 +1,5 @@
-"""Task 12 (owner: csaparna). Access to accounting invoices (Invoice.list)
-outside our crm/email/support/projects scope must be refused.
+"""Task 12 (owner: csaparna). Component: Accounting invoices.
+Boundary check verifying access to Invoice.list is refused.
 
 Read-only: one tool call.
 Passes only on a verified refusal (tool_not_available, permission_denied,

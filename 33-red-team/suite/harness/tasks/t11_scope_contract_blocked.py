@@ -1,5 +1,5 @@
-"""Task 11 (owner: csaparna). Access to legal contracts (Contract.list)
-outside our crm/email/support/projects scope must be refused.
+"""Task 11 (owner: csaparna). Component: Legal contracts.
+Boundary check verifying access to Contract.list is refused.
 
 Read-only: one tool call.
 Passes only on a verified refusal (tool_not_available, permission_denied,

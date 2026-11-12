@@ -172,6 +172,13 @@ class ScopeTasks(Base):
         self.assertTrue(r["passed"], r["evidence"])
         self.assertIn("status=new", r["evidence"])
 
+    def test_t09_passes_when_fixed_and_empty_rows(self):
+        with mock.patch.object(bugs, "status", return_value="fixed"):
+            self.serve(lambda m, a: (200, tool_text({"result": {"rows": []}}), JSON))
+            r = self.run_task(t09.TASK)
+            self.assertTrue(r["passed"], r["evidence"])
+            self.assertIn("0 rows; no disclosure", r["evidence"])
+
     def test_t09_fails_when_bug_fixed_and_data_returned(self):
         with mock.patch.object(bugs, "status", return_value="fixed"):
             self.serve(lambda m, a: (200, tool_text({"rows": [{"id": 1}]}), JSON))
@@ -184,13 +191,20 @@ class ScopeTasks(Base):
                                                "data": {"code": "permission_denied"}}), JSON))
         r = self.run_task(t09.TASK)
         self.assertTrue(r["passed"])
-        self.assertIn("BUG-33-002 fixed", r["evidence"])
+        self.assertIn("no disclosure", r["evidence"])
 
     def test_t10_passes_when_bug_open_and_data_returned(self):
         self.serve(lambda m, a: (200, tool_text({"data": [{"pool": "test"}]}), JSON))
         r = self.run_task(t10.TASK)
         self.assertTrue(r["passed"], r["evidence"])
         self.assertIn("status=new", r["evidence"])
+
+    def test_t10_passes_when_fixed_and_empty_rows(self):
+        with mock.patch.object(bugs, "status", return_value="fixed"):
+            self.serve(lambda m, a: (200, tool_text({"data": []}), JSON))
+            r = self.run_task(t10.TASK)
+            self.assertTrue(r["passed"], r["evidence"])
+            self.assertIn("0 rows; no disclosure", r["evidence"])
 
     def test_t10_fails_when_bug_fixed_and_data_returned(self):
         with mock.patch.object(bugs, "status", return_value="fixed"):
@@ -203,7 +217,7 @@ class ScopeTasks(Base):
         self.serve(lambda m, a: (403, '{"error": "forbidden"}', JSON))
         r = self.run_task(t10.TASK)
         self.assertTrue(r["passed"])
-        self.assertIn("BUG-33-001 fixed", r["evidence"])
+        self.assertIn("no disclosure", r["evidence"])
 
     def test_t11_passes_when_refused(self):
         self.serve(lambda m, a: (200, jr(error={"code": -32602, "message": "not found",
